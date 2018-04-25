@@ -26,7 +26,19 @@ board = $200
         stx $2007
 .endmacro
 
-.segment "STARTUP"
+.segment "CODE"
+
+set_scroll_and_flags:
+        ldx scroll
+        stx $2005
+        ldx scroll
+        stx $2005
+set_ppu_flags:
+        ;     VPHBSINN
+        ldx #%10001000  ; enable NMI, sprites on $1000, nametable $2000
+        stx $2000
+        rts
+
 reset:
         sei
         cld
@@ -48,7 +60,6 @@ reset:
         jsr set_ppu_flags
         jsr init_board
 
-.segment "CODE"
 main:
         ldx #0          ; "I'm not done yet"
         stx update_done
@@ -74,19 +85,25 @@ no_return:              ; done with update
         jsr set_scroll_and_flags
         jmp main
 
+board_y = 5
+board_x = 5
+board_pos = $2000 + board_y*$20 + board_x
+
 init_board:
         ldx #22
         stx init_board_timer
         rts
 
 draw_top:
-        lda #$20
-        ldx #5 * 32 + 2
+@pos = board_pos - $20
+        lda #>@pos
+        ldx #<@pos
         jsr draw_border_row
         rts
 draw_bottom:
-        lda #$23
-        ldx #2 * 32 + 2
+@pos = board_pos + $20*20
+        lda #>@pos
+        ldx #<@pos
         jsr draw_border_row
 go_back:
         rts
@@ -104,7 +121,7 @@ draw_border:
 ;; a is the timer, set to the y position of the board
 ;; determine high address byte
         clc
-        adc #4          ; y position
+        adc #board_y-2
         ldx #$1f        ; base address
         tay             ; save a
         sec
@@ -118,10 +135,10 @@ draw_border:
         asl
         asl
         asl
-;; draw tiles to GPU
+;; draw tiles
         clc
-        adc #$2         ; x position
-        ldy #$1
+        adc #board_x
+        ldy #$2         ; border tile
         stx $2006       ; left edge
         sta $2006
         sty $2007
@@ -133,28 +150,17 @@ draw_border:
         rts
 
 draw_border_row:
-        ldy #12         ; loop counter
+        ldy #12
 @loop:
         sta $2006
         stx $2006
         pha
-        lda #$1
+        lda #$2         ; border tile
         sta $2007
         pla
         inx
         dey
         bne @loop
-        rts
-
-set_scroll_and_flags:
-        ldx scroll      ; set scroll
-        stx $2005
-        ldx scroll
-        stx $2005
-set_ppu_flags:
-        ;     VPHBSINN
-        ldx #%10001000  ; enable NMI, sprites on $1000, nametable $2000
-        stx $2000
         rts
 
 .segment "CHARS"
@@ -177,3 +183,5 @@ set_ppu_flags:
 .byte %11111111
 .byte %10000001
 .byte %00000000
+
+.res 16,$ff     ; border
