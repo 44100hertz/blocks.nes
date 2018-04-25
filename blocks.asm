@@ -81,12 +81,12 @@ init_board:
 
 draw_top:
         lda #$20
-        ldx #6 * 32 + 2
+        ldx #5 * 32 + 2
         jsr draw_border_row
         rts
 draw_bottom:
         lda #$23
-        ldx #3 * 32 + 2
+        ldx #2 * 32 + 2
         jsr draw_border_row
 go_back:
         rts
@@ -101,7 +101,9 @@ update_tiles:
         beq draw_top
         
 draw_border:
+;; a is the timer, set to the y position of the board
 ;; determine high address byte
+        clc
         adc #4          ; y position
         ldx #$1f        ; base address
         tay             ; save a
