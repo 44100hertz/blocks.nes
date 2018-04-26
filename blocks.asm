@@ -8,10 +8,10 @@
 .word vblank, reset, 0
 
 .segment "ZEROPAGE"
-update_done: .res 1
-scroll:      .res 1
-init_board_timer: .res 1
-board = $200
+update_done:            .res 1
+scroll:                 .res 1
+init_board_timer:       .res 1
+clear_screen_timer:     .res 1
 
 .macro  ppu_addr        addr
         ldx #>addr
@@ -57,6 +57,7 @@ reset:
         ;     BGRsbMmG
         ldx #%01111110  ; show sprites/bg
         stx $2001
+
         jsr set_ppu_flags
         jsr init_board
 
@@ -90,6 +91,8 @@ board_x = 5
 board_pos = $2000 + board_y*$20 + board_x
 
 init_board:
+        ldx #$1e
+        stx clear_screen_timer
         ldx #22
         stx init_board_timer
         rts
@@ -103,64 +106,78 @@ draw_bottom:
 @pos = board_pos + $20*20
         lda #>@pos
         ldx #<@pos
-
 draw_border_row:
         ldy #2          ; border tile
         sty 0
         ldy #12         ; width
         jsr fill_row
-go_back:
+        rts
+
+clear_screen:
+;; fill two rows with blank tile
+        sec
+        sbc #2
+        jsr y_coord_to_addr
+        ldy #$40
+@loop:
+        stx $2006
+        sta $2006
+        pha
+        lda #0
+        sta $2007
+        pla
+        clc
+        adc #$1
+        dey
+        bne @loop
+        dec clear_screen_timer
+        dec clear_screen_timer
+back:
         rts
 
 update_tiles:
+        lda clear_screen_timer
+        bne clear_screen
         lda init_board_timer
-        beq go_back
+        beq back
         dec init_board_timer
         cmp #22
         beq draw_bottom
         cmp #1
         beq draw_top
-        
+
 draw_border:
 ;; a is the timer, range 21..2
         clc
         adc #board_y-2  ; move timer into y position
-        ldx #$1f        ; base address
+        jsr y_coord_to_addr
+        clc
+        adc #board_x
+;; left edge
+        ldy #$2         ; border tile
+        stx $2006
+        sta $2006
+        sty $2007
+;; right edge
+        adc #11
+        stx $2006
+        sta $2006
+        sty $2007
+        rts
+
+y_coord_to_addr:
+        ldx #$1f        ; base address - 1
         tay             ; save a
-;; determine high address byte
         sec
-@loop:  inx
+@loop:  inx             ; repeated subtract to find upper byte
         sbc #$8
         bpl @loop
         tya             ; restore a
-;; shift a into lower Y position
-        asl             ; turn a into column
+        asl             ; move a into lower byte
         asl
         asl
         asl
         asl
-;; draw tiles
-        clc
-        adc #board_x
-        sta 0           ; swap bytes
-        txa
-        ldx 0
-;; left edge
-        ldy #$2         ; border tile
-        sta $2006
-        stx $2006
-        sty $2007
-;; middle (call fill_row)
-        inx
-        ldy #0          ; blank tile
-        sty 0
-        ldy #10         ; fill width
-        jsr fill_row
-;; right edge
-        ldy #$2         ; border tile
-        sta $2006
-        stx $2006
-        sty $2007
         rts
 
 ;; input: a - addr hi, x - addr lo, y - width, 0 - fill with
