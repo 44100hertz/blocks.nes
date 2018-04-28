@@ -12,7 +12,10 @@ update_done:            .res 1
 scroll:                 .res 1
 init_board_timer:       .res 1
 clear_screen_timer:     .res 1
-blocks_len:             .res 1
+
+t_blank  = 0
+t_block  = 1
+t_border = 2
 
 .segment "CODE"
 
@@ -24,7 +27,7 @@ set_scroll_and_flags:
         stx $2005
 set_ppu_flags:
         ;     VPHBSINN
-        ldx #%10001000  ; enable NMI, sprites on $1000, nametable $2000
+        ldx #%10000000  ; enable NMI, sprites/tiles both on $0, nametable $2000
         stx $2000
         rts
 
@@ -118,7 +121,7 @@ draw_bottom:
         lda #>@pos
         ldx #<@pos
 draw_border_row:
-        ldy #2          ; border tile
+        ldy #t_border   ; border tile
         sty 0
         ldy #12         ; width
         jsr fill_row
@@ -134,7 +137,7 @@ clear_screen:
         stx $2006
         sta $2006
         pha
-        lda #0
+        lda #t_blank
         sta $2007
         pla
         clc
@@ -166,7 +169,7 @@ draw_border:
         clc
         adc #board_x
 ;; left edge
-        ldy #$2         ; border tile
+        ldy #t_border   ; border tile
         stx $2006
         sta $2006
         sty $2007
