@@ -51,7 +51,7 @@ update_colors:
         rts
 
 palettes:
-.byte $01, $34, $24, $14
+.byte $01, $14, $24, $34
 
 reset:
         sei
@@ -210,24 +210,4 @@ fill_row:
         rts
 
 .segment "CHARS"
-
-.res  16, 0     ; bg
-
-.byte %11111111 ; block p1
-.byte %01111110
-.byte %00111100
-.byte %00111100
-.byte %00111100
-.byte %00111100
-.byte %00000000
-.byte %00000000
-.byte %00000000 ; p2
-.byte %10000001
-.byte %11111111
-.byte %11111111
-.byte %11111111
-.byte %11111111
-.byte %10000001
-.byte %00000000
-
-.res 16,$ff     ; border
+.incbin "chr.bin"

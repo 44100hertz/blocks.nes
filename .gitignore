@@ -1,2 +1,4 @@
 *.o
 *.nes
+*.bin
+bmp2chr
