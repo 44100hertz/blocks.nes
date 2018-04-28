@@ -12,10 +12,15 @@ update_done:            .res 1
 scroll:                 .res 1
 init_board_timer:       .res 1
 clear_screen_timer:     .res 1
+timer:
+time_hours:             .res 1
+time_mins:              .res 1
+time_secs:              .res 1
+time_frames:            .res 1
 
 t_blank  = 0
 t_block  = 1
-t_border = 'Z'
+t_border = 2
 
 .segment "CODE"
 
@@ -79,9 +84,24 @@ main:
         ldx #0          ; "I'm not done yet"
         stx update_done
 
+update_timer:
+        lda #0
+        ldx #4
+@loop:
+        inc timer,x
+        ldy timer,x
+        cpy #60
+        bne @done
+        sta timer,x
+        dex
+        bne @loop
+@done:
+
         ldx #1          ; "Ok we're done now"
         stx update_done
 :       jmp :-          ; spin until vblank
+
+
 
 vblank:
         pha             ; save a
@@ -105,6 +125,11 @@ board_x = 5
 board_pos = $2000 + board_y*$20 + board_x
 
 init_board:
+        ldx #0
+        stx time_frames
+        stx time_secs
+        stx time_mins
+        stx time_hours
         ldx #$1e
         stx clear_screen_timer
         ldx #22
@@ -148,13 +173,14 @@ clear_screen:
         dec clear_screen_timer
         rts
 
-draw_block:
+normal_draw:
+rts
 
 update_tiles:
         lda clear_screen_timer
         bne clear_screen
         lda init_board_timer
-        beq draw_block
+        beq normal_draw
         dec init_board_timer
         cmp #22
         beq draw_bottom
