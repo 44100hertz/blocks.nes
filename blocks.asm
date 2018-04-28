@@ -12,22 +12,11 @@ update_done:            .res 1
 scroll:                 .res 1
 init_board_timer:       .res 1
 clear_screen_timer:     .res 1
-
-.macro  ppu_addr        addr
-        ldx #>addr
-        stx $2006
-        ldx #<addr
-        stx $2006
-.endmacro
-
-.macro  ppu_write       addr, value
-        ppu_addr addr
-        ldx value
-        stx $2007
-.endmacro
+blocks_len:             .res 1
 
 .segment "CODE"
 
+;; uses: x
 set_scroll_and_flags:
         ldx scroll
         stx $2005
@@ -39,6 +28,28 @@ set_ppu_flags:
         stx $2000
         rts
 
+;; set palette colors in the gpu
+;; inputs: x - first input color
+;;         a - last input color
+;;         y - first output color
+;; uses:   0, a, x, y
+update_colors:
+        sta 0
+@loop:
+        lda #$3f        ; colors are on 3fxx
+        sta $2006
+        stx $2006
+        lda palettes,y
+        sta $2007
+        iny
+        inx
+        cpx 0
+        bne @loop
+        rts
+
+palettes:
+.byte $01, $34, $24, $14
+
 reset:
         sei
         cld
@@ -49,10 +60,10 @@ reset:
 :       bit $2002
         bpl :-
 
-        ppu_write $3f00, #$01   ; bg color
-        ppu_write $3f01, #$34   ; block col 0
-        ppu_write $3f02, #$24
-        ppu_write $3f03, #$14
+        ldx #0
+        lda #4
+        ldy #0
+        jsr update_colors
 
         ;     BGRsbMmG
         ldx #%01111110  ; show sprites/bg
@@ -132,14 +143,15 @@ clear_screen:
         bne @loop
         dec clear_screen_timer
         dec clear_screen_timer
-back:
         rts
+
+draw_block:
 
 update_tiles:
         lda clear_screen_timer
         bne clear_screen
         lda init_board_timer
-        beq back
+        beq draw_block
         dec init_board_timer
         cmp #22
         beq draw_bottom
