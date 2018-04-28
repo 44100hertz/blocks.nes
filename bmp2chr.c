@@ -20,7 +20,7 @@ int main(int argc, char **argv)
         for (int t=0; t<256; ++t) {
                 char *tile = &bmp[(t%16)*8 + (t/16)*CHR_WIDTH*8];
                 for (int p=0; p<64; ++p) {
-                        long b = tile[p%8 + (p/8)*CHR_WIDTH];
+                        long b = tile[(7-p%8) + (p/8)*CHR_WIDTH];
                         buf[t*2+0] |= (b >> 0 & 1) << p;
                         buf[t*2+1] |= (b >> 1 & 1) << p;
                 }

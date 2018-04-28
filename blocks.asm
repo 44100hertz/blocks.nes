@@ -15,7 +15,7 @@ clear_screen_timer:     .res 1
 
 t_blank  = 0
 t_block  = 1
-t_border = 2
+t_border = 'Z'
 
 .segment "CODE"
 
