@@ -54,7 +54,7 @@ update_colors:
         rts
 
 palettes:
-.byte $01, $14, $24, $34
+.byte $01, $14, $25, $35
 .byte $11, $2c, $3c
 .byte $16, $27, $38
 .byte $1d, $2d, $3d
