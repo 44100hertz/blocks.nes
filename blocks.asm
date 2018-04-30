@@ -1,5 +1,4 @@
-;; current concept:
-;; store a list of block changes to apply in the PPU during draw
+.setcpu "6502"
 
 .segment "HEADER"
 .byte "NES", $1a, 2, 1, 0, 0
@@ -8,11 +7,15 @@
 .word vblank, reset, 0
 
 .segment "ZEROPAGE"
-                        .res 8  ;used for function calls
+                        .res 8 ;; can be used for function calls
 update_done:            .res 1
 scroll:                 .res 1
 init_board_timer:       .res 1
 clear_screen_timer:     .res 1
+
+.segment "RAM"
+timer_len = 11
+timer:                  .res timer_len
 
 .segment "CODE"
 
@@ -36,11 +39,9 @@ board_pos = $2000 + board_y*$20 + board_x
 timer_x = board_x
 timer_y = board_y+21
 timer_pos = $2000 + timer_y*$20 + timer_x
-timer = $200
 
 timer_start:  .byte "00:00:00:00"
 timer_limits: .byte "::;6:;6:;6:"
-timer_len = 11
 
 ;; uses: x
 set_scroll_and_flags:
@@ -80,6 +81,19 @@ reset:
         txs
 :       bit $2002       ; wait 2 frames
         bpl :-
+        ldx #0
+        lda #0
+@loop:                  ; zero all the memory
+        sta $000,x
+        sta $100,x
+        sta $200,x
+        sta $300,x
+        sta $400,x
+        sta $500,x
+        sta $600,x
+        sta $700,x
+        inx
+        bne @loop
 :       bit $2002
         bpl :-
 
