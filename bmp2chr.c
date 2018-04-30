@@ -12,10 +12,10 @@ int main(int argc, char **argv)
         char *bmp = s->pixels;
         const size_t bufsize = s->w * s->h * 2 / 8;
         Uint64 *buf = calloc(1, bufsize);
-        unsigned tiles_x = s->w / 8;
-        for (unsigned t=0; t<bufsize/64; ++t) {
+        Uint64 tiles_x = s->w / 8;
+        for (Uint64 t=0; t<s->w*s->h/64; ++t) {
                 char *tile = &bmp[(t%tiles_x)*8 + (t/tiles_x)*s->w*8];
-                for (unsigned p=0; p<64; ++p) {
+                for (Uint64 p=0; p<64; ++p) {
                         long b = tile[(7-p%8) + (p/8)*s->w];
                         buf[t*2+0] |= (b >> 0 & 1) << p;
                         buf[t*2+1] |= (b >> 1 & 1) << p;
