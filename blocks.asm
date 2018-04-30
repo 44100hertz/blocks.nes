@@ -14,13 +14,33 @@ scroll:                 .res 1
 init_board_timer:       .res 1
 clear_screen_timer:     .res 1
 
-t_blank  = 0
-t_block  = 1
-t_border = 4
-
 .segment "CODE"
 
+data:
+palettes:
+.byte $01, $14, $25, $35
+.byte $11, $2c, $3c
+.byte $16, $27, $38
+.byte $1d, $2d, $3d
+
+t_blank  = 0
+t_block  = 1
+t_block2 = 2
+t_block3 = 3
+t_border = 4
+
+board_y = 5
+board_x = 5
+board_pos = $2000 + board_y*$20 + board_x
+
+timer_x = board_x
+timer_y = board_y+21
+timer_pos = $2000 + timer_y*$20 + timer_x
 timer = $200
+
+timer_start:  .byte "00:00:00:00"
+timer_limits: .byte "::;6:;6:;6:"
+timer_len = 11
 
 ;; uses: x
 set_scroll_and_flags:
@@ -34,30 +54,24 @@ set_ppu_flags:
         stx $2000
         rts
 
-;; set palette colors in the gpu
-;; inputs: x - first input color
-;;         a - last input color
-;;         y - first output color
+;; inputs: x - first output addr
+;;         y - first input addr
+;;         a - last input addr
+;;         1 - output high byte (not updated)
 ;; uses:   0, a, x, y
-update_colors:
+ppu_copy:
         sta 0
 @loop:
-        lda #$3f
+        lda 1
         sta $2006
         stx $2006
-        lda palettes,y
+        lda data,y
         sta $2007
         iny
         inx
-        cpx 0
+        cpy 0
         bne @loop
         rts
-
-palettes:
-.byte $01, $14, $25, $35
-.byte $11, $2c, $3c
-.byte $16, $27, $38
-.byte $1d, $2d, $3d
 
 reset:
         sei
@@ -69,10 +83,12 @@ reset:
 :       bit $2002
         bpl :-
 
+        ldx #$3f        ; copy palette
+        stx 1
         ldx #0
         lda #4
-        ldy #0
-        jsr update_colors
+        ldy #palettes - data
+        jsr ppu_copy
 
         ;     BGRsbMmG
         ldx #%01111110  ; show sprites/bg
@@ -90,17 +106,14 @@ main:
         stx update_done
 :       jmp :-          ; spin until vblank
 
-timer_limits:
-;;    hours       minutes     seconds     frames (change to '5' for pal)
-.byte $ff, '9'+1, '6', '9'+1, '6', '9'+1, '6', '9'+1 
 update_timer:
-        ldx #8
+        ldx #timer_len
 @loop:
         inc timer-1,x
         lda timer-1,x
         cmp timer_limits-1,x
         bne @done
-        lda #'0'
+        lda timer_start-1,x
         sta timer-1,x
         dex
         bne @loop
@@ -120,15 +133,11 @@ no_return:              ; done with update
         pla
         pla
 
-        jsr draw_timer
         jsr update_tiles
         jsr set_scroll_and_flags
         jmp main
 
 draw_timer:
-timer_x = board_x
-timer_y = board_y+21
-timer_pos = $2000 + timer_y*$20 + timer_x
         ldy #>timer_pos
         ldx #<timer_pos
 @loop:
@@ -137,18 +146,14 @@ timer_pos = $2000 + timer_y*$20 + timer_x
         lda timer - <timer_pos,x
         sta $2007
         inx
-        cpx #<timer_pos+8
+        cpx #<timer_pos+timer_len
         bne @loop
         rts
 
-board_y = 5
-board_x = 5
-board_pos = $2000 + board_y*$20 + board_x
-
 init_board:
-        ldy #8
-        lda #'0'
+        ldy #timer_len
 @loop:
+        lda timer_start-1,y
         sta timer-1,y
         dey
         bne @loop
@@ -196,7 +201,8 @@ clear_screen:
         rts
 
 normal_draw:
-rts
+        jsr draw_timer
+        rts
 
 update_tiles:
         lda clear_screen_timer
