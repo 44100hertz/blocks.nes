@@ -147,7 +147,7 @@ no_return:              ; done with update
         pla
         pla
 
-        jsr update_tiles
+        jsr draw_tiles
         jsr set_scroll_and_flags
         jmp main
 
@@ -187,10 +187,17 @@ draw_bottom:
         lda #>@pos
         ldx #<@pos
 draw_border_row:
-        ldy #t_border   ; border tile
-        sty 0
         ldy #12         ; width
-        jsr fill_row
+@loop:
+        sta $2006       ; fill row
+        stx $2006
+        pha
+        lda #t_border   ; border tile
+        sta $2007
+        pla
+        inx
+        dey
+        bne @loop
         rts
 
 clear_screen:
@@ -218,7 +225,7 @@ normal_draw:
         jsr draw_timer
         rts
 
-update_tiles:
+draw_tiles:
         lda clear_screen_timer
         bne clear_screen
         lda init_board_timer
@@ -261,20 +268,6 @@ y_coord_to_addr:
         asl
         asl
         asl
-        rts
-
-;; input: a - addr hi, x - addr lo, y - width, 0 - fill with
-fill_row:
-@loop:
-        sta $2006
-        stx $2006
-        pha
-        lda 0          ; border tile
-        sta $2007
-        pla
-        inx
-        dey
-        bne @loop
         rts
 
 .segment "CHARS"

@@ -1,6 +1,6 @@
 all: rom
 rom: chr.bin
-	ca65 blocks.asm
+	ca65 *.asm
 	ld65 -C rom.cfg -o blocks.nes blocks.o
 
 chr.bin: bmp2chr chr.bmp
