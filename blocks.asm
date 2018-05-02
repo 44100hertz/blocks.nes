@@ -12,10 +12,20 @@ update_done:            .res 1
 scroll:                 .res 1
 init_board_timer:       .res 1
 clear_screen_timer:     .res 1
+pause:                  .res 1
 
 .segment "RAM"
 timer_len = 11
 timer:                  .res timer_len
+buttons:
+btn_a:          .res 1
+btn_b:          .res 1
+btn_select:     .res 1
+btn_start:      .res 1
+btn_du:         .res 1
+btn_dd:         .res 1
+btn_dl:         .res 1
+btn_dr:         .res 1
 
 .segment "CODE"
 
@@ -32,13 +42,12 @@ t_block2 = 2
 t_block3 = 3
 t_border = 4
 
+.define POS(xx, yy) $2000 + (xx) + (yy) * $20
+
 board_y = 5
 board_x = 5
-board_pos = $2000 + board_y*$20 + board_x
-
-timer_x = board_x
-timer_y = board_y+21
-timer_pos = $2000 + timer_y*$20 + timer_x
+board_pos = POS board_x, board_y
+timer_pos = POS board_x, board_y+21
 
 timer_start:  .byte "00:00:00:00"
 timer_limits: .byte "::;6:;6:;6:"
@@ -55,24 +64,30 @@ set_ppu_flags:
         stx $2000
         rts
 
-;; inputs: x - first output addr
-;;         y - first input addr
-;;         a - last input addr
-;;         1 - output high byte (not updated)
-;; uses:   0, a, x, y
-ppu_copy:
-        sta 0
+
+.macro  copy     in, out, len
+        ldx #len+1
 @loop:
-        lda 1
-        sta $2006
-        stx $2006
-        lda data,y
-        sta $2007
-        iny
-        inx
-        cpy 0
+        lda in-1,x
+        sta out-1,x
+        dex
         bne @loop
-        rts
+.endmacro
+
+.macro  ppu_copy out, in, len
+        ldx #len
+        ldy #<out + len - 1
+.local loop
+loop:
+        lda #>out
+        sta $2006
+        sty $2006
+        lda in-1,x
+        sta $2007
+        dey
+        dex
+        bne loop
+.endmacro
 
 reset:
         sei
@@ -97,12 +112,7 @@ reset:
 :       bit $2002
         bpl :-
 
-        ldx #$3f        ; copy palette
-        stx 1
-        ldx #0
-        lda #4
-        ldy #palettes - data
-        jsr ppu_copy
+        ppu_copy $3f00, palettes, 7
 
         ;     BGRsbMmG
         ldx #%01111110  ; show sprites/bg
@@ -114,11 +124,40 @@ reset:
 main:
         ldx #0          ; "I'm not done yet"
         stx update_done
-        jsr update_timer
 
+        jsr read_controls
+
+        lda btn_start
+        and #3
+        cmp #1
+        bne no_toggle_pause
+        lda pause
+        eor #1
+        sta pause
+no_toggle_pause:
+        lda pause
+        bne no_update
+        jsr update_timer
+no_update:
         ldx #1          ; "Ok we're done now"
         stx update_done
 :       jmp :-          ; spin until vblank
+
+read_controls:
+        lda #1          ; prepare buttons for reading
+        sta $4016
+        lsr             ; zero A
+        sta $4016
+        ldx #0          ; read in all 8 buttons
+@loop:
+        lda buttons,x   ; shift current buttons in
+        asl
+        ora $4016
+        sta buttons,x
+        inx
+        cpx #8
+        bne @loop
+        rts
 
 update_timer:
         ldx #timer_len
@@ -175,7 +214,21 @@ init_board:
         stx clear_screen_timer
         ldx #22
         stx init_board_timer
+        ldx #1
+        stx pause
         rts
+
+draw_tiles:
+        lda clear_screen_timer
+        bne clear_screen
+        lda init_board_timer
+        beq normal_draw
+        dec init_board_timer
+        cmp #22
+        beq draw_bottom
+        cmp #1
+        beq draw_top
+        jmp draw_border
 
 draw_top:
 @pos = board_pos - $20
@@ -224,17 +277,6 @@ clear_screen:
 normal_draw:
         jsr draw_timer
         rts
-
-draw_tiles:
-        lda clear_screen_timer
-        bne clear_screen
-        lda init_board_timer
-        beq normal_draw
-        dec init_board_timer
-        cmp #22
-        beq draw_bottom
-        cmp #1
-        beq draw_top
 
 draw_border:
 ;; a is the timer, range 21..2
