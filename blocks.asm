@@ -64,7 +64,6 @@ set_ppu_flags:
         stx $2000
         rts
 
-
 .macro  copy     in, out, len
         ldx #len+1
 @loop:
@@ -125,8 +124,25 @@ main:
         ldx #0          ; "I'm not done yet"
         stx update_done
 
-        jsr read_controls
+read_controls:
+        lda #1          ; prepare buttons for reading
+        sta $4016
+        lsr a           ; zero A
+        sta $4016
+        tax             ; zero X
+@loop:
+        lda $4016
+        lsr a           ; get bit 0
+        rol buttons,x   ; shift into button tracker
+        inx
+        cpx #8
+        bne @loop
 
+        lda btn_select
+        bit pause
+        beq no_reset
+        jsr init_game
+no_reset:
         lda btn_start
         and #3
         cmp #1
@@ -142,22 +158,6 @@ no_update:
         ldx #1          ; "Ok we're done now"
         stx update_done
 :       jmp :-          ; spin until vblank
-
-read_controls:
-        lda #1          ; prepare buttons for reading
-        sta $4016
-        lsr             ; zero A
-        sta $4016
-        ldx #0          ; read in all 8 buttons
-@loop:
-        lda buttons,x   ; shift current buttons in
-        asl
-        ora $4016
-        sta buttons,x
-        inx
-        cpx #8
-        bne @loop
-        rts
 
 update_timer:
         ldx #timer_len
@@ -204,18 +204,20 @@ draw_timer:
         rts
 
 init_board:
-        ldy #timer_len
-@loop:
-        lda timer_start-1,y
-        sta timer-1,y
-        dey
-        bne @loop
         ldx #$1e
         stx clear_screen_timer
         ldx #22
         stx init_board_timer
         ldx #1
         stx pause
+init_game:
+;; init timer
+        ldy #timer_len
+@loop:
+        lda timer_start-1,y
+        sta timer-1,y
+        dey
+        bne @loop
         rts
 
 draw_tiles:
