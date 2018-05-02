@@ -7,7 +7,7 @@ chr.bin: bmp2chr chr.bmp
 	./bmp2chr
 
 bmp2chr: bmp2chr.c
-	cc bmp2chr.c -o bmp2chr `sdl2-config --cflags --libs` $(CFLAGS)
+	cc bmp2chr.c -o bmp2chr `pkg-config sdl2 --cflags --libs` $(CFLAGS)
 
 run: rom
 	mednafen blocks.nes
