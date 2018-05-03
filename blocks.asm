@@ -85,12 +85,11 @@ t_border = 4
 .segment "CODE"
 
 pal_0:
-.byte $0d               ; bg
-.byte $03, $14, $25, 0  ; tiles
+.byte $03, $14, $25, 0   ; tiles
 .byte $0c, $1c, $2c, 0
 .byte $07, $17, $27, 0
-.byte $2d, $1d, $2d, 0
-.byte $14, $25, $35, 0  ; sprites
+.byte $2d, $1d, $2d, $0d ; bg color
+.byte $14, $25, $35, 0   ; sprites
 .byte $11, $2c, $3c, 0
 .byte $16, $27, $38, 0
 .byte $1d, $2d, $3d
@@ -150,14 +149,15 @@ reset:
         sta $700,x
         inx
         bne @loop
-:       bit $2002
-        bpl :-
 
-        ppu_copy $3f00, pal_0, $20
+:       bit $2002       ; wait another frame
+        bpl :-
 
         ;     BGRsbMmG
         ldx #%00011110  ; show sprites/bg
         stx $2001
+
+        ppu_copy $3f01, pal_0, $1f
 
         jsr set_ppu_flags
         jsr init_board
