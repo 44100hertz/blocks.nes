@@ -6,6 +6,9 @@
 .segment "VECTORS"
 .word vblank, reset, 0
 
+.segment "CHARS"
+.incbin "chr.bin"
+
 .segment "ZEROPAGE"
                         .res 8 ;; can be used for function calls
 update_done:            .res 1
@@ -22,6 +25,7 @@ btn_du:                 .res 1
 btn_dd:                 .res 1
 btn_dl:                 .res 1
 btn_dr:                 .res 1
+drop_timer:             .res 2
 
 .segment "RAM"
 oam:
@@ -33,51 +37,9 @@ oam_pad:                .res $100 + oam - oam_end
 timer_len = 11
 timer:                  .res timer_len
 
-.segment "CODE"
-
-palettes:
-.byte $01               ; bg
-.byte $14, $25, $35, 0  ; tiles
-.byte $11, $2c, $3c, 0
-.byte $16, $27, $38, 0
-.byte $1d, $2d, $3d, 0
-.byte $14, $25, $35, 0  ; sprites
-.byte $11, $2c, $3c, 0
-.byte $16, $27, $38, 0
-.byte $1d, $2d, $3d
-
-t_blank  = 0
-t_block  = 1
-t_block2 = 2
-t_block3 = 3
-t_border = 4
-
-text_x = (board_x+3) *8 + 4
-text_y = (board_y+10)*8 - 5
-
-spr_ready:
-.byte text_y, 'R', 1, text_x
-.byte text_y, 'E', 1, text_x+8
-.byte text_y, 'A', 1, text_x+16
-.byte text_y, 'D', 1, text_x+24
-.byte text_y, 'Y', 1, text_x+32
-
-spr_pause:
-.byte text_y, 'P', 0, text_x
-.byte text_y, 'A', 0, text_x+8
-.byte text_y, 'U', 0, text_x+16
-.byte text_y, 'S', 0, text_x+24
-.byte text_y, 'E', 0, text_x+32
+;; macros ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 .define POS(xx, yy) $2000 + (xx) + (yy) * $20
-
-board_y = 5
-board_x = 5
-board_pos = POS board_x, board_y
-timer_pos = POS board_x, board_y+21
-
-timer_start:  .byte "00:00:00:00"
-timer_limits: .byte "::;6:;6:;6:"
 
 .macro  copy     out, in, len
 .local loop
@@ -103,6 +65,54 @@ loop:
         dex
         bne loop
 .endmacro
+
+;; constants ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+board_y = 5
+board_x = 5
+board_pos = POS board_x, board_y
+timer_pos = POS board_x, board_y+21
+
+t_blank  = 0
+t_block  = 1
+t_block2 = 2
+t_block3 = 3
+t_border = 4
+
+;; data ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+.segment "CODE"
+
+pal_0:
+.byte $0d               ; bg
+.byte $03, $14, $25, 0  ; tiles
+.byte $0c, $1c, $2c, 0
+.byte $07, $17, $27, 0
+.byte $2d, $1d, $2d, 0
+.byte $14, $25, $35, 0  ; sprites
+.byte $11, $2c, $3c, 0
+.byte $16, $27, $38, 0
+.byte $1d, $2d, $3d
+
+timer_start:  .byte "00:00:00:00"
+timer_limits: .byte "::;6:;6:;6:"
+
+text_x = (board_x+3) *8 + 4
+text_y = (board_y+10)*8 - 5
+
+spr_ready:
+.byte text_y, 'R', 1, text_x
+.byte text_y, 'E', 1, text_x+8
+.byte text_y, 'A', 1, text_x+16
+.byte text_y, 'D', 1, text_x+24
+.byte text_y, 'Y', 1, text_x+32
+
+spr_pause:
+.byte text_y, 'P', 0, text_x
+.byte text_y, 'A', 0, text_x+8
+.byte text_y, 'U', 0, text_x+16
+.byte text_y, 'S', 0, text_x+24
+.byte text_y, 'E', 0, text_x+32
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; startup                                                ;;
@@ -133,10 +143,10 @@ reset:
 :       bit $2002
         bpl :-
 
-        ppu_copy $3f00, palettes, $20
+        ppu_copy $3f00, pal_0, $20
 
         ;     BGRsbMmG
-        ldx #%01111110  ; show sprites/bg
+        ldx #%00011110  ; show sprites/bg
         stx $2001
 
         jsr set_ppu_flags
@@ -213,6 +223,27 @@ finish_update:
         ldx #1          ; "Ok we're done now"
         stx update_done
 :       jmp :-          ; spin until vblank
+
+;; subroutines ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+init_board:
+        ldx #$1e
+        stx clear_screen_timer
+        ldx #22
+        stx init_board_timer
+        ldx #1
+        stx pause
+init_game:
+;; init timer
+        ldy #timer_len
+@loop:
+        lda timer_start-1,y
+        sta timer-1,y
+        dey
+        bne @loop
+        copy oam_text, spr_ready, 20
+        rts
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; graphics                                               ;;
@@ -325,10 +356,7 @@ draw_done:
         jsr set_scroll_and_flags
         jmp main
 
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; subroutines                                            ;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; subroutines ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 set_scroll_and_flags:
         ldx scroll
@@ -339,24 +367,6 @@ set_ppu_flags:
         ;     VPHBSINN
         ldx #%10000000  ; enable NMI, sprites/tiles both on $0, nametable $2000
         stx $2000
-        rts
-
-init_board:
-        ldx #$1e
-        stx clear_screen_timer
-        ldx #22
-        stx init_board_timer
-        ldx #1
-        stx pause
-init_game:
-;; init timer
-        ldy #timer_len
-@loop:
-        lda timer_start-1,y
-        sta timer-1,y
-        dey
-        bne @loop
-        copy oam_text, spr_ready, 20
         rts
 
 y_coord_to_addr:
@@ -373,6 +383,3 @@ y_coord_to_addr:
         asl
         asl
         rts
-
-.segment "CHARS"
-.incbin "chr.bin"
