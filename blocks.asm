@@ -28,6 +28,7 @@ btn_dr:                 .res 1
 
 drop_timer:             .res 1 ; fractional part of drop
 drop_rate:              .res 2
+fast_drop_rate:         .res 2
 
 .segment "RAM"
 oam:
@@ -219,15 +220,19 @@ no_toggle_pause:
 
 game_tick:
 drop_piece:
-        clc
+        lda btn_dd
+        lsr a           ; if down currently pressed (low bit)
+        lda #0
+        rol a           ; ...turn into 2
+        rol a
+        tax             ; use as index
         lda drop_timer
-        adc drop_rate+1
+        adc drop_rate+1,x ; to use faster drop rate
         sta drop_timer
-        lda drop_rate
+        lda drop_rate,x
         adc #0
         sta 0
         beq @done
-        lda btn_dd
 @drop_loop:
         ldx #0
 @loop:
@@ -274,10 +279,14 @@ init_board:
         stx pause
 init_game:
         copy oam_block, spr_testblock, 16
-        ldx #4
+        ldx #8
         stx drop_rate+1
         ldx #0
         stx drop_rate
+        ldx #80
+        stx fast_drop_rate+1
+        ldx #0
+        stx fast_drop_rate
         stx drop_timer
 ;; init timer
         ldy #timer_len
