@@ -13,23 +13,21 @@ scroll:                 .res 1
 init_board_timer:       .res 1
 clear_screen_timer:     .res 1
 pause:                  .res 1
+buttons:
+btn_a:                  .res 1
+btn_b:                  .res 1
+btn_select:             .res 1
+btn_start:              .res 1
+btn_du:                 .res 1
+btn_dd:                 .res 1
+btn_dl:                 .res 1
+btn_dr:                 .res 1
 
 .segment "RAM"
 timer_len = 11
 timer:                  .res timer_len
-buttons:
-btn_a:          .res 1
-btn_b:          .res 1
-btn_select:     .res 1
-btn_start:      .res 1
-btn_du:         .res 1
-btn_dd:         .res 1
-btn_dl:         .res 1
-btn_dr:         .res 1
 
 .segment "CODE"
-
-data:
 palettes:
 .byte $01, $14, $25, $35
 .byte $11, $2c, $3c
@@ -51,18 +49,6 @@ timer_pos = POS board_x, board_y+21
 
 timer_start:  .byte "00:00:00:00"
 timer_limits: .byte "::;6:;6:;6:"
-
-;; uses: x
-set_scroll_and_flags:
-        ldx scroll
-        stx $2005
-        ldx scroll
-        stx $2005
-set_ppu_flags:
-        ;     VPHBSINN
-        ldx #%10000000  ; enable NMI, sprites/tiles both on $0, nametable $2000
-        stx $2000
-        rts
 
 .macro  copy     in, out, len
         ldx #len+1
@@ -87,6 +73,10 @@ loop:
         dex
         bne loop
 .endmacro
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; startup                                                ;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 reset:
         sei
@@ -120,6 +110,10 @@ reset:
         jsr set_ppu_flags
         jsr init_board
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; logic                                                  ;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 main:
         ldx #0          ; "I'm not done yet"
         stx update_done
@@ -152,14 +146,9 @@ no_reset:
         sta pause
 no_toggle_pause:
         lda pause
-        bne no_update
-        jsr update_timer
-no_update:
-        ldx #1          ; "Ok we're done now"
-        stx update_done
-:       jmp :-          ; spin until vblank
+        bne finish_update
 
-update_timer:
+game_tick:
         ldx #timer_len
 @loop:
         inc timer-1,x
@@ -171,7 +160,15 @@ update_timer:
         dex
         bne @loop
 @done:
-        rts
+
+finish_update:
+        ldx #1          ; "Ok we're done now"
+        stx update_done
+:       jmp :-          ; spin until vblank
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; graphics                                               ;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 vblank:
         pha             ; save a
@@ -186,51 +183,55 @@ no_return:              ; done with update
         pla
         pla
 
-        jsr draw_tiles
-        jsr set_scroll_and_flags
-        jmp main
-
-draw_timer:
-        ldy #>timer_pos
-        ldx #<timer_pos
+        lda clear_screen_timer
+        beq no_clear_screen
+clear_screen:
+        sec
+        sbc #2
+        jsr y_coord_to_addr
+        ldy #$40
 @loop:
-        sty $2006
         stx $2006
-        lda timer - <timer_pos,x
+        sta $2006
+        pha
+        lda #t_blank
         sta $2007
-        inx
-        cpx #<timer_pos+timer_len
-        bne @loop
-        rts
-
-init_board:
-        ldx #$1e
-        stx clear_screen_timer
-        ldx #22
-        stx init_board_timer
-        ldx #1
-        stx pause
-init_game:
-;; init timer
-        ldy #timer_len
-@loop:
-        lda timer_start-1,y
-        sta timer-1,y
+        pla
+        clc
+        adc #$1
         dey
         bne @loop
-        rts
+        dec clear_screen_timer
+        dec clear_screen_timer
+        jmp draw_done
 
-draw_tiles:
-        lda clear_screen_timer
-        bne clear_screen
+no_clear_screen:
         lda init_board_timer
-        beq normal_draw
+        beq no_init_board
         dec init_board_timer
-        cmp #22
-        beq draw_bottom
         cmp #1
         beq draw_top
-        jmp draw_border
+        cmp #22
+        beq draw_bottom
+
+draw_border:
+;; a is the timer, range 21..2
+        clc
+        adc #board_y-2  ; move timer into y position
+        jsr y_coord_to_addr
+        clc
+        adc #board_x
+;; left edge
+        ldy #t_border   ; border tile
+        stx $2006
+        sta $2006
+        sty $2007
+;; right edge
+        adc #11
+        stx $2006
+        sta $2006
+        sty $2007
+        jmp draw_done
 
 draw_top:
 @pos = board_pos - $20
@@ -253,50 +254,55 @@ draw_border_row:
         inx
         dey
         bne @loop
+        jmp draw_done
+
+no_init_board:
+draw_timer:
+        ldy #>timer_pos
+        ldx #<timer_pos
+@loop:
+        sty $2006
+        stx $2006
+        lda timer - <timer_pos,x
+        sta $2007
+        inx
+        cpx #<timer_pos+timer_len
+        bne @loop
+draw_done:
+        jsr set_scroll_and_flags
+        jmp main
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; subroutines                                            ;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+set_scroll_and_flags:
+        ldx scroll
+        stx $2005
+        ldx scroll
+        stx $2005
+set_ppu_flags:
+        ;     VPHBSINN
+        ldx #%10000000  ; enable NMI, sprites/tiles both on $0, nametable $2000
+        stx $2000
         rts
 
-clear_screen:
-;; fill two rows with blank tile
-        sec
-        sbc #2
-        jsr y_coord_to_addr
-        ldy #$40
+init_board:
+        ldx #$1e
+        stx clear_screen_timer
+        ldx #22
+        stx init_board_timer
+        ldx #1
+        stx pause
+init_game:
+;; init timer
+        ldy #timer_len
 @loop:
-        stx $2006
-        sta $2006
-        pha
-        lda #t_blank
-        sta $2007
-        pla
-        clc
-        adc #$1
+        lda timer_start-1,y
+        sta timer-1,y
         dey
         bne @loop
-        dec clear_screen_timer
-        dec clear_screen_timer
-        rts
-
-normal_draw:
-        jsr draw_timer
-        rts
-
-draw_border:
-;; a is the timer, range 21..2
-        clc
-        adc #board_y-2  ; move timer into y position
-        jsr y_coord_to_addr
-        clc
-        adc #board_x
-;; left edge
-        ldy #t_border   ; border tile
-        stx $2006
-        sta $2006
-        sty $2007
-;; right edge
-        adc #11
-        stx $2006
-        sta $2006
-        sty $2007
         rts
 
 y_coord_to_addr:
