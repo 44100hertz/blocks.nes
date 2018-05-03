@@ -115,7 +115,7 @@ spr_pause:
 .byte text_y, 'E', 0, text_x+32
 
 block_x = (board_x+1)*8
-block_y = (board_y+1)*8
+block_y = (board_y+1)*8-1
 
 spr_testblock:
 .byte block_y+0, 1, 0, block_x
@@ -132,10 +132,13 @@ reset:
         cld
         ldx #$ff        ; fix stack
         txs
-:       bit $2002       ; wait 2 frames
+:       bit $2002       ; wait a frame
         bpl :-
-        ldx #0
-        lda #0
+
+        inx             ; x is now zero
+        stx $2000       ; disable everything
+        stx $2001       ; force blanking
+        tax
 @loop:                  ; zero all the memory
         sta $000,x
         sta $100,x
@@ -244,9 +247,8 @@ drop_piece:
         inx
         cpx #16
         bne @loop
-        dec 0
-        bne @drop_loop
-@done:
+        jmp drop
+drop_done:
 
 update_timer:
         ldx #timer_len
@@ -269,7 +271,7 @@ finish_update:
 ;; subroutines ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 init_board:
-        ldx #$1e
+        ldx #30
         stx clear_screen_timer
         ldx #22
         stx init_board_timer
@@ -322,23 +324,21 @@ no_return:              ; done with update
         lda clear_screen_timer
         beq no_clear_screen
 clear_screen:
-        sec
-        sbc #2
+        dec clear_screen_timer
+        sbc #0          ; carry is clear; this subtracts 1
         jsr y_coord_to_addr
-        ldy #$40
+        sta 0
+        ldy #$20        ; clear one screen line
 @loop:
         stx $2006
+        lda 0
         sta $2006
-        pha
         lda #t_blank
         sta $2007
-        pla
         clc
-        adc #$1
+        inc 0
         dey
         bne @loop
-        dec clear_screen_timer
-        dec clear_screen_timer
         jmp draw_done
 
 no_clear_screen:
@@ -404,6 +404,7 @@ draw_timer:
         inx
         cpx #<timer_pos+timer_len
         bne @loop
+
 draw_done:
         jsr set_scroll_and_flags
         jmp main
