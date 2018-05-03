@@ -24,14 +24,26 @@ btn_dl:                 .res 1
 btn_dr:                 .res 1
 
 .segment "RAM"
+oam:
+oam_piece:              .res 4*4
+oam_text:               .res 4*5
+oam_end:
+oam_pad:                .res $100 + oam - oam_end
+
 timer_len = 11
 timer:                  .res timer_len
 
 .segment "CODE"
+
 palettes:
-.byte $01, $14, $25, $35
-.byte $11, $2c, $3c
-.byte $16, $27, $38
+.byte $01               ; bg
+.byte $14, $25, $35, 0  ; tiles
+.byte $11, $2c, $3c, 0
+.byte $16, $27, $38, 0
+.byte $1d, $2d, $3d, 0
+.byte $14, $25, $35, 0  ; sprites
+.byte $11, $2c, $3c, 0
+.byte $16, $27, $38, 0
 .byte $1d, $2d, $3d
 
 t_blank  = 0
@@ -39,6 +51,23 @@ t_block  = 1
 t_block2 = 2
 t_block3 = 3
 t_border = 4
+
+text_x = (board_x+3) *8 + 4
+text_y = (board_y+10)*8 - 5
+
+spr_ready:
+.byte text_y, 'R', 1, text_x
+.byte text_y, 'E', 1, text_x+8
+.byte text_y, 'A', 1, text_x+16
+.byte text_y, 'D', 1, text_x+24
+.byte text_y, 'Y', 1, text_x+32
+
+spr_pause:
+.byte text_y, 'P', 0, text_x
+.byte text_y, 'A', 0, text_x+8
+.byte text_y, 'U', 0, text_x+16
+.byte text_y, 'S', 0, text_x+24
+.byte text_y, 'E', 0, text_x+32
 
 .define POS(xx, yy) $2000 + (xx) + (yy) * $20
 
@@ -50,13 +79,14 @@ timer_pos = POS board_x, board_y+21
 timer_start:  .byte "00:00:00:00"
 timer_limits: .byte "::;6:;6:;6:"
 
-.macro  copy     in, out, len
+.macro  copy     out, in, len
+.local loop
         ldx #len+1
-@loop:
+loop:
         lda in-1,x
         sta out-1,x
         dex
-        bne @loop
+        bne loop
 .endmacro
 
 .macro  ppu_copy out, in, len
@@ -90,7 +120,9 @@ reset:
 @loop:                  ; zero all the memory
         sta $000,x
         sta $100,x
+        lda #$ff        ; except you, oam
         sta $200,x
+        lda #0
         sta $300,x
         sta $400,x
         sta $500,x
@@ -101,7 +133,7 @@ reset:
 :       bit $2002
         bpl :-
 
-        ppu_copy $3f00, palettes, 7
+        ppu_copy $3f00, palettes, $20
 
         ;     BGRsbMmG
         ldx #%01111110  ; show sprites/bg
@@ -136,14 +168,30 @@ read_controls:
         bit pause
         beq no_reset
         jsr init_game
+
 no_reset:
-        lda btn_start
+        lda btn_start   ; test if start just pressed
         and #3
         cmp #1
         bne no_toggle_pause
+toggle_pause:
         lda pause
-        eor #1
-        sta pause
+        beq enable_pause
+        bne disable_pause
+enable_pause:
+        sec             ; set pause to 1
+        rol pause
+        copy oam_text, spr_pause, 20
+        jmp no_toggle_pause
+disable_pause:
+        lsr pause       ; clear pause
+        lda #$ff
+        ldx #20+1
+@loop:
+        sta oam_text-1,x
+        dex
+        bne @loop
+
 no_toggle_pause:
         lda pause
         bne finish_update
@@ -182,6 +230,11 @@ no_return:              ; done with update
         pla             ; nuke return data
         pla
         pla
+
+        lda #0          ; oam DMA
+        sta $4004
+        lda #>oam
+        sta $4014
 
         lda clear_screen_timer
         beq no_clear_screen
@@ -303,6 +356,7 @@ init_game:
         sta timer-1,y
         dey
         bne @loop
+        copy oam_text, spr_ready, 20
         rts
 
 y_coord_to_addr:
