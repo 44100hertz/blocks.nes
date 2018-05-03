@@ -10,7 +10,7 @@
 .incbin "chr.bin"
 
 .segment "ZEROPAGE"
-                        .res 8 ;; can be used for function calls
+                        .res 8 ; can be used for function calls
 update_done:            .res 1
 scroll:                 .res 1
 init_board_timer:       .res 1
@@ -25,11 +25,13 @@ btn_du:                 .res 1
 btn_dd:                 .res 1
 btn_dl:                 .res 1
 btn_dr:                 .res 1
-drop_timer:             .res 2
+
+drop_timer:             .res 1 ; fractional part of drop
+drop_rate:              .res 2
 
 .segment "RAM"
 oam:
-oam_piece:              .res 4*4
+oam_block:              .res 4*4
 oam_text:               .res 4*5
 oam_end:
 oam_pad:                .res $100 + oam - oam_end
@@ -113,6 +115,15 @@ spr_pause:
 .byte text_y, 'U', 0, text_x+16
 .byte text_y, 'S', 0, text_x+24
 .byte text_y, 'E', 0, text_x+32
+
+block_x = (board_x+1)*8
+block_y = (board_y+1)*8
+
+spr_testblock:
+.byte block_y+0, 1, 0, block_x
+.byte block_y+0, 1, 0, block_x+8
+.byte block_y+8, 1, 0, block_x
+.byte block_y+8, 1, 0, block_x+8
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; startup                                                ;;
@@ -207,6 +218,34 @@ no_toggle_pause:
         bne finish_update
 
 game_tick:
+drop_piece:
+        clc
+        lda drop_timer
+        adc drop_rate+1
+        sta drop_timer
+        lda drop_rate
+        adc #0
+        sta 0
+        beq @done
+        lda btn_dd
+@drop_loop:
+        ldx #0
+@loop:
+        lda oam_block,x
+        clc
+        adc #8
+        sta oam_block,x
+        inx
+        inx
+        inx
+        inx
+        cpx #16
+        bne @loop
+        dec 0
+        bne @drop_loop
+@done:
+
+update_timer:
         ldx #timer_len
 @loop:
         inc timer-1,x
@@ -234,6 +273,12 @@ init_board:
         ldx #1
         stx pause
 init_game:
+        copy oam_block, spr_testblock, 16
+        ldx #4
+        stx drop_rate+1
+        ldx #0
+        stx drop_rate
+        stx drop_timer
 ;; init timer
         ldy #timer_len
 @loop:
