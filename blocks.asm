@@ -45,20 +45,18 @@ timer:                  .res timer_len
 .define POS(xx, yy) $2000 + (xx) + (yy) * $20
 
 .macro  copy     out, in, len
-.local loop
         ldx #len+1
-loop:
+:
         lda in-1,x
         sta out-1,x
         dex
-        bne loop
+        bne :-
 .endmacro
 
 .macro  ppu_copy out, in, len
         ldx #len
         ldy #<out + len - 1
-.local loop
-loop:
+:
         lda #>out
         sta $2006
         sty $2006
@@ -66,7 +64,7 @@ loop:
         sta $2007
         dey
         dex
-        bne loop
+        bne :-
 .endmacro
 
 ;; constants ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
