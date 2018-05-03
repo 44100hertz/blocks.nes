@@ -233,8 +233,25 @@ drop_piece:
         lda drop_rate,x
         adc #0
         sta 0
-        beq @done
-@drop_loop:
+drop:
+        dec 0
+        bmi drop_done
+test_drop:
+        ldx #0
+@loop:
+        lda oam_block,x
+        cmp #(19+board_y)*8-1 ; test y out of bounds
+        bcc @ok
+        copy oam_block, spr_testblock, 20
+        bcs drop_done
+@ok:
+        inx
+        inx
+        inx
+        inx
+        cpx #16
+        bne @loop
+apply_drop:
         ldx #0
 @loop:
         lda oam_block,x
