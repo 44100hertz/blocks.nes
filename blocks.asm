@@ -441,12 +441,11 @@ set_ppu_flags:
 
 y_coord_to_addr:
         ldx #$1f        ; base address - 1
-        tay             ; save a
         sec
-@loop:  inx             ; repeated subtract to find upper byte
+@loop:
+        inx             ; repeated subtract to find upper byte
         sbc #$8
         bpl @loop
-        tya             ; restore a
         asl             ; move a into lower byte
         asl
         asl
