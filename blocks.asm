@@ -36,6 +36,7 @@ oam_block:              .res 4*4
 oam_text:               .res 4*5
 oam_end:
 oam_pad:                .res $100 + oam - oam_end
+enable_solidify:        .res 1
 
 timer_len = 11
 timer:                  .res timer_len
@@ -219,6 +220,11 @@ no_toggle_pause:
         lda pause
         bne finish_update
 
+        lda enable_solidify     ; HACK: reset block pos on solidify
+        beq drop_piece
+        dec enable_solidify
+        copy oam_block, spr_testblock, 20
+
 game_tick:
 drop_piece:
         lda btn_dd
@@ -242,7 +248,8 @@ test_drop:
         lda oam_block,x
         cmp #(19+board_y)*8-1 ; test y out of bounds
         bcc @ok
-        copy oam_block, spr_testblock, 20
+        lda #1
+        sta enable_solidify
         bcs drop_done
 @ok:
         inx
@@ -421,6 +428,46 @@ draw_timer:
         inx
         cpx #<timer_pos+timer_len
         bne @loop
+
+;; turn a block sprite into block tiles
+        lda enable_solidify
+        beq no_solidify
+solidify:
+        ldx #t_block        ; const block value
+        ldy #0              ; loop counter
+@loop:
+        lda oam_block,y     ; y position
+        sec                 ; add 1 to get real y (lol nes)
+        adc #0
+        sta 0               ; save real y
+        rol                 ; move top 2 bits to bottom for addr
+        rol
+        rol
+        and #$03            ; ...and isolate them
+        ora #$20            ; base nametable addr
+        sta $2006           ; write high addr
+
+        lda 0               ; get y again for lowish bits
+        and #$f8            ; turn into block coord
+        asl                 ; multiply 8 into 32
+        asl
+        sta 0               ; save it...
+
+        lda oam_block+3,y   ; x position
+        lsr                 ; divide by 8 to get block x
+        lsr
+        lsr
+        clc
+        adc 0               ; ...add back to X
+        sta $2006           ; write lo addr
+        stx $2007           ; write constant block value
+        iny                 ; move to next block
+        iny
+        iny
+        iny
+        cpy #16
+        bne @loop
+no_solidify:
 
 draw_done:
         jsr set_scroll_and_flags
