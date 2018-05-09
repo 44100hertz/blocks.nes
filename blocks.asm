@@ -142,7 +142,7 @@ reset:
         tax
 @loop:                  ; zero all the memory
         sta $000,x
-        sta $100,x
+;        sta $100,x     ; no reason to zero stack
         lda #$ff        ; except you, oam
         sta $200,x
         lda #0
