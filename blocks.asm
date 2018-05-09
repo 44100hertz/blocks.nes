@@ -188,7 +188,7 @@ read_controls:
         cpx #8
         bne @loop
 
-        lda btn_select
+        lda btn_select  ; if paused and pressed select, reset game
         bit pause
         beq no_reset
         jsr init_game
@@ -209,7 +209,7 @@ enable_pause:
         jmp no_toggle_pause
 disable_pause:
         lsr pause       ; clear pause
-        lda #$ff
+        lda #$ff        ; overwrite pause text with FF
         ldx #20+1
 @loop:
         sta oam_text-1,x
@@ -321,7 +321,6 @@ init_game:
         bne @loop
         copy oam_text, spr_ready, 20
         rts
-
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; graphics                                               ;;
@@ -437,8 +436,8 @@ solidify:
         ldy #0              ; loop counter
 @loop:
         lda oam_block,y     ; y position
-        sec                 ; add 1 to get real y (lol nes)
-        adc #0
+        clc
+        adc #1              ; add 1 (or 2) to get real y (last 8 rounded off)
         sta 0               ; save real y
         rol                 ; move top 2 bits to bottom for addr
         rol
