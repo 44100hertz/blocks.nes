@@ -21,14 +21,16 @@ btn_a:                  .res 1
 btn_b:                  .res 1
 btn_select:             .res 1
 btn_start:              .res 1
-btn_du:                 .res 1
-btn_dd:                 .res 1
-btn_dl:                 .res 1
-btn_dr:                 .res 1
+btn_up:                 .res 1
+btn_down:               .res 1
+btn_left:               .res 1
+btn_right:              .res 1
 
 drop_timer:             .res 1 ; fractional part of drop
 drop_rate:              .res 2
 fast_drop_rate:         .res 2
+
+enable_solidify:        .res 1
 
 .segment "RAM"
 oam:
@@ -37,10 +39,11 @@ oam_text:               .res 4*5
 oam_end:
 oam_pad:                .res $100 + oam - oam_end
 
-board:                  .res 120 ; bitpacked board data
+board:                  .res 128 ; bitpacked board data
 tile_addrs:             .res 12  ; tile nametable addrs, used during nmi
-test_addrs:             .res 12  ; used for collision testing
-enable_solidify:        .res 1
+tile_bits:              .res 12  ; addrs used for writing to board. high = offset, lo = bit
+ttest_addrs:            .res 12  ; mirrors of above used to see if positions are valid
+ttest_bits:             .res 12
 
 timer_len = 11
 timer:                  .res timer_len
@@ -119,14 +122,16 @@ spr_pause:
 .byte text_y, 'S', 0, text_x+24
 .byte text_y, 'E', 0, text_x+32
 
-block_x = (board_x+1)*8
-block_y = (board_y+1)*8-1
+block_x = (board_x+5)*8
+block_y = (board_y-2)*8-1
 
 spr_testblock:
 .byte block_y+0, 1, 0, block_x
 .byte block_y+0, 1, 0, block_x+8
 .byte block_y+8, 1, 0, block_x
 .byte block_y+8, 1, 0, block_x+8
+
+flag_bits: .byte $80, $40, $20, $10, $08, $04, $02, $01
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; startup                                                ;;
@@ -225,14 +230,27 @@ no_toggle_pause:
         beq no_jmp_finish_update ; long jump to end update
         jmp finish_update
 no_jmp_finish_update:
-        lda enable_solidify     ; HACK: reset block pos on solidify
-        beq drop_piece
-        dec enable_solidify
+        lda enable_solidify
+        beq game_tick
         copy oam_block, spr_testblock, 20
 
+;; store previously calculated tile offsets/bits to the board
+write_to_board:
+        ldx #0
+@loop:
+        ldy tile_bits,x    ; board offset
+        lda tile_bits+1,x  ; one bit
+        ora board,y        ; set bit
+        sta board,y
+        inx
+        inx
+        cpx #8
+        bne @loop
+        ;; TODO: logic to prepare next piece
+        dec enable_solidify
+
 game_tick:
-drop_piece:
-        lda btn_dd
+        lda btn_down
         lsr a           ; if down currently pressed (low bit)
         lda #0
         rol a           ; ...turn into 2
@@ -244,6 +262,39 @@ drop_piece:
         lda drop_rate,x
         adc #0
         sta 0
+
+shift:
+        lda #0
+        sta 1
+;; read left and right
+        ldy #0  ; shift
+        lda btn_right
+        and #$3
+        cmp #1
+        bne no_right
+        lda #8
+        sta 1
+no_right:
+        lda btn_left
+        and #$3
+        cmp #1
+        bne no_left
+        lda #$f8
+        sta 1
+no_left:
+        ldx #0
+@loop:
+        lda oam_block+3,x
+        clc
+        adc 1
+        sta oam_block+3,x
+        inx
+        inx
+        inx
+        inx
+        cpx #16
+        bne @loop
+
 drop:
         dec 0
         bmi drop_done
@@ -264,8 +315,7 @@ apply_drop:
 drop_done:
 
 ;; First, I convert the sprite addrs to nametable addrs.
-;; (TODO) Then, I test if they're ok by comparing to bitpacked board positions.
-;; (TODO) If so, I let things go ahead. Otherwise, I handle the collision.
+;; Then, I test if they're ok by comparing to bitpacked board positions.
 
 update_tile_addrs:
         ldx #0              ; tile_addr index
@@ -274,13 +324,15 @@ update_tile_addrs:
         lda oam_block,y     ; y position
         clc
         adc #1              ; add 1 (or 2) to get real y (last 8 rounded off)
+        cmp #(board_y+20)*8 ; y bounds check (easier here than in nametable)
+        bcs position_fail
         sta 0               ; save real y
         rol                 ; move top 2 bits to bottom for addr
         rol
         rol
         and #$03            ; ...and isolate them
         ora #$20            ; base nametable addr
-        sta tile_addrs,x    ; write high addr
+        sta ttest_addrs,x      ; write high addr
 
         lda 0               ; get y again for lowish bits
         and #$f8            ; turn into block coord
@@ -294,7 +346,7 @@ update_tile_addrs:
         lsr
         clc
         adc 0               ; ...add back to X
-        sta tile_addrs+1,x  ; write lo addr
+        sta ttest_addrs+1,x    ; write lo addr
         inx                 ; next output index
         inx
         iny                 ; next input index
@@ -303,6 +355,57 @@ update_tile_addrs:
         iny
         cpy #16
         bne @loop
+
+;; Convert and save above nametable indices to board bit indices.
+;; Four bytes per row, 30 rows bitpacked. (yes, that's the whole screen :P)
+;; This also tests if they're valid and fails if so.
+
+test_board_pos:
+        ldx #0 
+@loop:
+        lda ttest_addrs,x   ; get high byte
+        and #$3             ; trim excess
+        lsr                 ; rotate into upper index
+        ror
+        ror
+        ror
+        sta 0               ; save for later
+        lda ttest_addrs+1,x ; get low byte
+        and #$7
+        tay                 ; turn low bits into bit index
+        lda flag_bits,y
+        sta ttest_bits+1,x  ; save for later in loop and possible later copying
+        lda ttest_addrs+1,x ; get low byte again
+        lsr                 ; divide by 8 (bits account for bottom 8)
+        lsr
+        lsr
+        ora 0               ; finalize index
+        sta ttest_bits,x    ; save alongside addr
+        tay
+        lda board,y         ; test relevant bit
+        and ttest_bits+1,x
+        bne position_fail   ; collision
+        inx
+        inx
+        cpx #8
+        bne @loop
+
+position_success:
+        copy tile_addrs, ttest_addrs, 16 ; copying all 16 copies bits as well
+        jmp update_timer
+
+position_fail:
+;; clear current block sprite
+        lda #$ff
+        ldx #0
+@loop:
+        sta oam_block,x
+        inx
+        cpx #16
+        bne @loop
+        lda #1
+        sta enable_solidify
+        jmp update_timer
 
 update_timer:
         ldx #timer_len
@@ -461,11 +564,8 @@ draw_timer:
 ;; turn a block sprite into block tiles.
 ;; the nametable addrs were found in the main update loop.
 
-        lda btn_b
-        cmp #$1         ; solidify on B press for testing
-        bne no_solidify
-;        lda enable_solidify
-;        beq no_solidify
+        lda enable_solidify
+        beq no_solidify
 solidify:
         ldx #0
         ldy #t_block    ; constant block fill value
