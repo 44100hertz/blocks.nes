@@ -36,6 +36,10 @@ oam_block:              .res 4*4
 oam_text:               .res 4*5
 oam_end:
 oam_pad:                .res $100 + oam - oam_end
+
+board:                  .res 120 ; bitpacked board data
+tile_addrs:             .res 12  ; tile nametable addrs, used during nmi
+test_addrs:             .res 12  ; used for collision testing
 enable_solidify:        .res 1
 
 timer_len = 11
@@ -143,7 +147,7 @@ reset:
 @loop:                  ; zero all the memory
         sta $000,x
 ;        sta $100,x     ; no reason to zero stack
-        lda #$ff        ; except you, oam
+        lda #$ff        ; ff oam
         sta $200,x
         lda #0
         sta $300,x
@@ -218,8 +222,9 @@ disable_pause:
 
 no_toggle_pause:
         lda pause
-        bne finish_update
-
+        beq no_jmp_finish_update ; long jump to end update
+        jmp finish_update
+no_jmp_finish_update:
         lda enable_solidify     ; HACK: reset block pos on solidify
         beq drop_piece
         dec enable_solidify
@@ -242,22 +247,6 @@ drop_piece:
 drop:
         dec 0
         bmi drop_done
-test_drop:
-        ldx #0
-@loop:
-        lda oam_block,x
-        cmp #(19+board_y)*8-1 ; test y out of bounds
-        bcc @ok
-        lda #1
-        sta enable_solidify
-        bcs drop_done
-@ok:
-        inx
-        inx
-        inx
-        inx
-        cpx #16
-        bne @loop
 apply_drop:
         ldx #0
 @loop:
@@ -273,6 +262,47 @@ apply_drop:
         bne @loop
         jmp drop
 drop_done:
+
+;; First, I convert the sprite addrs to nametable addrs.
+;; (TODO) Then, I test if they're ok by comparing to bitpacked board positions.
+;; (TODO) If so, I let things go ahead. Otherwise, I handle the collision.
+
+update_tile_addrs:
+        ldx #0              ; tile_addr index
+        ldy #0              ; oam_block index
+@loop:
+        lda oam_block,y     ; y position
+        clc
+        adc #1              ; add 1 (or 2) to get real y (last 8 rounded off)
+        sta 0               ; save real y
+        rol                 ; move top 2 bits to bottom for addr
+        rol
+        rol
+        and #$03            ; ...and isolate them
+        ora #$20            ; base nametable addr
+        sta tile_addrs,x    ; write high addr
+
+        lda 0               ; get y again for lowish bits
+        and #$f8            ; turn into block coord
+        asl                 ; multiply 8 into 32
+        asl
+        sta 0               ; save it...
+
+        lda oam_block+3,y   ; x position
+        lsr                 ; divide by 8 to get block x
+        lsr
+        lsr
+        clc
+        adc 0               ; ...add back to X
+        sta tile_addrs+1,x  ; write lo addr
+        inx                 ; next output index
+        inx
+        iny                 ; next input index
+        iny
+        iny
+        iny
+        cpy #16
+        bne @loop
 
 update_timer:
         ldx #timer_len
@@ -428,43 +458,26 @@ draw_timer:
         cpx #<timer_pos+timer_len
         bne @loop
 
-;; turn a block sprite into block tiles
-        lda enable_solidify
-        beq no_solidify
+;; turn a block sprite into block tiles.
+;; the nametable addrs were found in the main update loop.
+
+        lda btn_b
+        cmp #$1         ; solidify on B press for testing
+        bne no_solidify
+;        lda enable_solidify
+;        beq no_solidify
 solidify:
-        ldx #t_block        ; const block value
-        ldy #0              ; loop counter
+        ldx #0
+        ldy #t_block    ; constant block fill value
 @loop:
-        lda oam_block,y     ; y position
-        clc
-        adc #1              ; add 1 (or 2) to get real y (last 8 rounded off)
-        sta 0               ; save real y
-        rol                 ; move top 2 bits to bottom for addr
-        rol
-        rol
-        and #$03            ; ...and isolate them
-        ora #$20            ; base nametable addr
-        sta $2006           ; write high addr
-
-        lda 0               ; get y again for lowish bits
-        and #$f8            ; turn into block coord
-        asl                 ; multiply 8 into 32
-        asl
-        sta 0               ; save it...
-
-        lda oam_block+3,y   ; x position
-        lsr                 ; divide by 8 to get block x
-        lsr
-        lsr
-        clc
-        adc 0               ; ...add back to X
-        sta $2006           ; write lo addr
-        stx $2007           ; write constant block value
-        iny                 ; move to next block
-        iny
-        iny
-        iny
-        cpy #16
+        lda tile_addrs,x        ; high byte
+        sta $2006
+        lda tile_addrs+1,x      ; lo byte
+        sta $2006
+        sty $2007      ; y has block value
+        inx
+        inx
+        cpx #8
         bne @loop
 no_solidify:
 
